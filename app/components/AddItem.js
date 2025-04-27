@@ -7,8 +7,10 @@ import Button from './Button';
 import ImagePickerButton from './ImagePickerButton';
 import { COLORS, SIZES, FONTS } from '../config/config';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
-const AddItemScreen = ({ onAddItem }) => {
+const AddItemScreen = () => {
+  const navigation = useNavigation();
   const [name, setName] = useState('');
   const [originalPrice, setOriginalPrice] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
@@ -23,17 +25,21 @@ const AddItemScreen = ({ onAddItem }) => {
     { label: 'Other', value: 'Other' },
   ]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Load categories from SecureStore on mount
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const storedCategories = await SecureStore.getItemAsync('categories');
         if (storedCategories) {
-          setCategories(JSON.parse(storedCategories));
+          const parsedCategories = JSON.parse(storedCategories);
+          if (Array.isArray(parsedCategories)) {
+            setCategories(parsedCategories);
+          }
         }
       } catch (error) {
         console.error('Error loading categories from SecureStore:', error);
+        setError('Failed to load categories');
       } finally {
         setIsLoading(false);
       }
@@ -41,7 +47,6 @@ const AddItemScreen = ({ onAddItem }) => {
     loadCategories();
   }, []);
 
-  // Save categories to SecureStore whenever they change
   useEffect(() => {
     const saveCategories = async () => {
       try {
@@ -50,22 +55,14 @@ const AddItemScreen = ({ onAddItem }) => {
         }
       } catch (error) {
         console.error('Error saving categories to SecureStore:', error);
+        setError('Failed to save categories');
       }
     };
     saveCategories();
-  }, [categories]);
+  }, [categories, isLoading]);
 
   const handleSave = async () => {
     try {
-      console.log('Saving item:', {
-        name,
-        originalPrice,
-        sellingPrice,
-        stock,
-        category,
-        imageUri,
-      });
-
       if (
         !name ||
         !originalPrice ||
@@ -76,12 +73,12 @@ const AddItemScreen = ({ onAddItem }) => {
         isNaN(parseFloat(sellingPrice)) ||
         isNaN(parseInt(stock))
       ) {
-        console.warn('Validation failed: All fields must be filled with valid numbers.');
+        setError('All fields must be filled with valid numbers');
         return;
       }
 
       const newItem = {
-        id: Date.now().toString(), // Unique ID for each item
+        id: Date.now().toString(),
         name,
         originalPrice: parseFloat(originalPrice),
         sellingPrice: parseFloat(sellingPrice),
@@ -90,37 +87,34 @@ const AddItemScreen = ({ onAddItem }) => {
         imageUri,
       };
 
-      // Load existing items from SecureStore
       let existingItems = [];
       const storedItems = await SecureStore.getItemAsync('items');
       if (storedItems) {
-        existingItems = JSON.parse(storedItems);
+        existingItems = JSON.parse(storedItems) || [];
       }
 
-      // Ensure existingItems is an array
       if (!Array.isArray(existingItems)) {
         existingItems = [];
       }
 
-      // Append new item and save back to SecureStore
       const updatedItems = [...existingItems, newItem];
       await SecureStore.setItemAsync('items', JSON.stringify(updatedItems));
       console.log('Item saved to SecureStore:', newItem);
 
-      // Notify parent via callback
-      if (onAddItem) {
-        onAddItem(newItem);
-      }
-
-      // Reset form
+      
       setName('');
       setOriginalPrice('');
       setSellingPrice('');
       setStock('');
       setCategory('Electronics');
       setImageUri(null);
+      setError(null);
+
+      
+      navigation.navigate('Items', { newItem });
     } catch (error) {
       console.error('Error in handleSave:', error);
+      setError('Failed to save item');
     }
   };
 
@@ -134,7 +128,11 @@ const AddItemScreen = ({ onAddItem }) => {
   };
 
   if (isLoading) {
-    return null; // Wait until categories are loaded
+    return (
+      <View style={styles.loadingContainer}>
+        <Text>Loading...</Text>
+      </View>
+    );
   }
 
   return (
@@ -144,6 +142,7 @@ const AddItemScreen = ({ onAddItem }) => {
           <Text style={styles.headerText}>Add New Item</Text>
         </View>
         <View style={styles.formContainer}>
+          {error && <Text style={styles.errorText}>{error}</Text>}
           <ImagePickerButton imageUri={imageUri} onImagePicked={setImageUri} />
           <View style={styles.divider} />
           <FormInput label="Item Name" value={name} onChangeText={setName} />
@@ -262,7 +261,6 @@ const styles = StyleSheet.create({
   },
   picker: {
     width: '100%',
-    height: 40,
     color: COLORS.text,
   },
   customCategoryContainer: {
@@ -282,6 +280,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingVertical: SIZES.padding * 0.8,
     borderRadius: SIZES.borderRadius,
+  },
+  errorText: {
+    color: COLORS.error || 'red',
+    fontSize: SIZES.body,
+    marginBottom: SIZES.margin,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

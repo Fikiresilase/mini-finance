@@ -1,4 +1,3 @@
-// app/screens/WelcomeScreen.js
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import LottieView from 'lottie-react-native';
@@ -8,13 +7,10 @@ import { COLORS, SIZES, FONTS } from '../config/config';
 const WelcomeScreen = ({ navigation }) => {
   const handleGetStarted = async () => {
     try {
-      // Mark the app as launched
       await SecureStore.setItemAsync('hasLaunched', 'true');
-      // Navigate to the Main screen (which contains the tab navigator)
-      navigation.replace('Main');
+      navigation.navigate('Dashboard');
     } catch (error) {
       console.error('Error setting hasLaunched in SecureStore:', error);
-      // Proceed anyway to avoid blocking the user
       navigation.replace('Main');
     }
   };
@@ -22,11 +18,11 @@ const WelcomeScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <LottieView
-        source={require('../assets/welcome.json')} // Adjust path to your Lottie file
+        source={require('../assets/welcome.json')} 
         autoPlay
         loop
         style={styles.lottie}
-        resizeMode="contain" // Ensures the animation scales without adding background
+        resizeMode="contain" 
       />
       <Text style={styles.title}>Welcome to Your Store!</Text>
       <Text style={styles.subtitle}>

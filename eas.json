@@ -1,12 +1,21 @@
 {
-    "cli": {
-      "version": ">= 0.52.0"
+  "cli": {
+    "version": ">= 0.52.0"
+  },
+  "build": {
+    "development": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      }
     },
-    "build": {
-      "release": {
-        "android": {
-          "buildType": "apk"
-        }
+    "release": {
+      "android": {
+        "buildType": "apk"
       }
     }
   }
+}

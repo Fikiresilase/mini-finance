@@ -1,4 +1,3 @@
-// App.js
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -28,12 +27,12 @@ const MainApp = () => (
       tabBarActiveTintColor: COLORS.primary,
       tabBarInactiveTintColor: COLORS.text,
       tabBarStyle: { backgroundColor: COLORS.white },
-      headerShown:true
+      headerShown: false,
     })}
   >
-    <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
-    <Tab.Screen name="Items" component={ItemListScreen} options={{ headerShown: false }} />
-    <Tab.Screen name="Add Item" component={AddItemScreen} options={{ headerShown: false }} />
+    <Tab.Screen name="Dashboard" component={DashboardScreen} />
+    <Tab.Screen name="Items" component={ItemListScreen} />
+    <Tab.Screen name="Add Item" component={AddItemScreen} />
   </Tab.Navigator>
 );
 
@@ -45,16 +44,18 @@ const App = () => {
       try {
         const hasLaunched = await SecureStore.getItemAsync('hasLaunched');
         setIsFirstLaunch(hasLaunched === null || hasLaunched === 'false');
+        if (hasLaunched === null || hasLaunched === 'false') {
+          await SecureStore.setItemAsync('hasLaunched', 'true');
+        }
       } catch (error) {
         console.error('Error checking hasLaunched:', error);
-        setIsFirstLaunch(true); // Show welcome on error to be safe
+        setIsFirstLaunch(true);
       }
     };
     checkFirstLaunch();
   }, []);
 
   if (isFirstLaunch === null) {
-    // Loading state while checking SecureStore
     return null;
   }
 

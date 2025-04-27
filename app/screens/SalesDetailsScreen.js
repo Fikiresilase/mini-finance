@@ -203,7 +203,6 @@ const styles = StyleSheet.create({
   },
   picker: {
     flex: 1,
-    height: 40,
     color: COLORS.text,
   },
   summaryContainer: {

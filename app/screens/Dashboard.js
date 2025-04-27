@@ -6,31 +6,38 @@ import { Picker } from '@react-native-picker/picker';
 import LottieView from 'lottie-react-native';
 import * as SecureStore from 'expo-secure-store';
 import { COLORS, SIZES, FONTS } from '../config/config';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 const screenWidth = Dimensions.get('window').width;
 
-const DashboardScreen = ({ navigation }) => {
+const DashboardScreen = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
   const [sales, setSales] = useState([]);
   const [timePeriod, setTimePeriod] = useState('week');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Load sales from SecureStore on mount
+  
   useEffect(() => {
     const loadSales = async () => {
       try {
         const storedSales = await SecureStore.getItemAsync('sales');
-        console.log('Raw stored sales from SecureStore:', storedSales); // Debug raw data
         if (storedSales) {
           const parsedSales = JSON.parse(storedSales);
-          console.log('Parsed sales:', parsedSales); // Debug parsed data
-          setSales(Array.isArray(parsedSales) ? parsedSales : []);
+          if (!Array.isArray(parsedSales)) {
+            setError('Invalid sales data detected');
+            setSales([]);
+            return;
+          }
+          setSales(parsedSales);
         } else {
-          console.log('No sales found in SecureStore');
           setSales([]);
         }
       } catch (error) {
-        console.error('Error loading sales from SecureStore:', error);
-        setSales([]); // Fallback to empty array on error
+        console.error('Error loading sales:', error);
+        setError('Failed to load sales data');
+        setSales([]);
       } finally {
         setIsLoading(false);
       }
@@ -38,93 +45,97 @@ const DashboardScreen = ({ navigation }) => {
     loadSales();
   }, []);
 
+  
+  useEffect(() => {
+    if (route.params?.newSale) {
+      setSales((prevSales) => [...prevSales, route.params.newSale]);
+    }
+  }, [route.params?.newSale]);
+
   const getSalesData = () => {
     const today = new Date();
-    let days, labelFormat;
+    let periods, labelFormat, groupBy;
 
     switch (timePeriod) {
       case 'day':
-        days = 24;
-        labelFormat = (date) => date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        periods = 24; 
+        labelFormat = (date) => date.toLocaleTimeString('en-US', { hour: '2-digit', hour12: true });
+        groupBy = (sale) => {
+          const date = new Date(sale.timestamp);
+          return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}T${date.getHours()}`;
+        };
         break;
       case 'week':
-        days = 7;
+        periods = 7; 
         labelFormat = (date) => date.toLocaleDateString('en-US', { weekday: 'short' });
+        groupBy = (sale) => new Date(sale.timestamp).toISOString().split('T')[0];
         break;
       case 'month':
-        days = 30;
+        periods = 30; 
         labelFormat = (date) => date.toLocaleDateString('en-US', { day: 'numeric' });
+        groupBy = (sale) => new Date(sale.timestamp).toISOString().split('T')[0];
         break;
       default:
-        days = 7;
+        periods = 7;
         labelFormat = (date) => date.toLocaleDateString('en-US', { weekday: 'short' });
+        groupBy = (sale) => new Date(sale.timestamp).toISOString().split('T')[0];
     }
 
-    // Generate days starting from today and going backward
-    const periodDays = Array(days)
+    
+    const periodDates = Array(periods)
       .fill()
       .map((_, i) => {
         const date = new Date(today);
         if (timePeriod === 'day') {
-          date.setHours(today.getHours() - (days - 1 - i)); // Start from earliest hour to today
+          date.setHours(today.getHours() - (periods - 1 - i));
         } else {
-          date.setDate(today.getDate() - (days - 1 - i)); // Start from earliest day to today
+          date.setDate(today.getDate() - (periods - 1 - i));
         }
         return date;
       });
 
-    const salesByPeriod = periodDays.map((date) => {
-      const dateStr = timePeriod === 'day'
-        ? date.toISOString().split('T')[0] + 'T' + date.toISOString().split('T')[1].slice(0, 2)
+    const salesByPeriod = periodDates.map((date) => {
+      const key = timePeriod === 'day'
+        ? `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}T${date.getHours()}`
         : date.toISOString().split('T')[0];
-      const periodSales = sales
-        .filter((sale) => {
-          const saleDate = sale.timestamp.split('T')[0];
-          if (timePeriod === 'day') {
-            const saleHour = sale.timestamp.split('T')[1].slice(0, 2);
-            return saleDate === dateStr.split('T')[0] && saleHour === dateStr.split('T')[1];
-          }
-          return saleDate === dateStr;
-        })
-        .reduce((sum, sale) => sum + sale.price, 0);
-      return periodSales;
+      return sales
+        .filter((sale) => groupBy(sale) === key)
+        .reduce((sum, sale) => sum + (sale.price || 0), 0);
     });
 
     return {
-      labels: periodDays.map(labelFormat),
+      labels: periodDates.map(labelFormat),
       datasets: [{ data: salesByPeriod }],
     };
   };
 
   if (isLoading) {
     return (
-      <View style={styles.scrollContainer}>
+      <View style={styles.loadingContainer}>
         <Text style={styles.noDataText}>Loading sales data...</Text>
       </View>
     );
   }
 
-  const chartData = sales && sales.length > 0 ? getSalesData() : null;
+  const chartData = sales.length > 0 ? getSalesData() : null;
   const today = new Date().toISOString().split('T')[0];
 
   const todaySales = sales
     .filter((sale) => sale.timestamp.split('T')[0] === today)
-    .reduce((sum, sale) => sum + sale.price, 0);
+    .reduce((sum, sale) => sum + (sale.price || 0), 0);
 
   const todayProfit = sales
     .filter((sale) => sale.timestamp.split('T')[0] === today)
-    .reduce((sum, sale) => sum + (sale.price - (sale.originalPrice || 0)), 0);
+    .reduce((sum, sale) => sum + ((sale.price || 0) - (sale.originalPrice || 0)), 0);
 
   const chartConfig = {
     backgroundColor: COLORS.white,
     backgroundGradientFrom: COLORS.white,
     backgroundGradientTo: COLORS.white,
     decimalPlaces: 0,
-    color: (opacity = 1) => '#00695C',
+    color: (opacity = 1) => COLORS.primary,
     labelColor: (opacity = 1) => COLORS.text,
-    style: {
-      borderRadius: SIZES.borderRadius,
-    },
+    style: { borderRadius: SIZES.borderRadius },
     propsForBackgroundLines: {
       stroke: COLORS.secondary,
       strokeWidth: 1,
@@ -135,11 +146,11 @@ const DashboardScreen = ({ navigation }) => {
       strokeWidth: '2',
       stroke: COLORS.primary,
     },
-    fillShadowGradient: '#00695C',
+    fillShadowGradient: COLORS.primary,
     fillShadowGradientOpacity: 0.3,
   };
 
-  const chartWidth = chartData ? chartData.labels.length * (timePeriod === 'day' ? 60 : 40) : 0;
+  const chartWidth = chartData ? Math.max(chartData.labels.length * (timePeriod === 'day' ? 60 : 40), screenWidth - SIZES.padding * 3) : screenWidth - SIZES.padding * 3;
 
   const periodOptions = [
     { label: 'Day', value: 'day', icon: 'access-time' },
@@ -149,7 +160,7 @@ const DashboardScreen = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainer}>
-      {/* Stats Card with Details Icon */}
+      {error && <Text style={styles.errorText}>{error}</Text>}
       <View style={styles.card}>
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
@@ -166,12 +177,12 @@ const DashboardScreen = ({ navigation }) => {
         <TouchableOpacity
           style={styles.detailsButton}
           onPress={() => navigation.navigate('SalesDetails')}
+          accessibilityLabel="View sales details"
         >
           <MaterialIcons name="list" size={24} color={COLORS.primary} />
         </TouchableOpacity>
       </View>
 
-      {/* Chart Card with Picker */}
       <View style={styles.chartCard}>
         <Text style={styles.chartTitle}>
           Sales Trend ({timePeriod.charAt(0).toUpperCase() + timePeriod.slice(1)})
@@ -181,7 +192,7 @@ const DashboardScreen = ({ navigation }) => {
           <View style={styles.chartCardHeader}>
             <View style={styles.pickerWrapper}>
               <MaterialIcons
-                name={periodOptions.find((opt) => opt.value === timePeriod).icon}
+                name={periodOptions.find((opt) => opt.value === timePeriod)?.icon || 'calendar-view-week'}
                 size={14}
                 color={COLORS.white}
                 style={styles.pickerIcon}
@@ -198,7 +209,7 @@ const DashboardScreen = ({ navigation }) => {
                     key={option.value}
                     label={option.label}
                     value={option.value}
-                    color="#333"
+                    color={COLORS.text}
                   />
                 ))}
               </Picker>
@@ -230,7 +241,8 @@ const DashboardScreen = ({ navigation }) => {
                 </Text>
                 <TouchableOpacity
                   style={styles.addButton}
-                  onPress={() => navigation?.navigate('Add Item')}
+                  onPress={() => navigation.navigate('Add Item')}
+                  accessibilityLabel="Add new item"
                 >
                   <MaterialIcons name="add" size={20} color={COLORS.white} style={styles.addButtonIcon} />
                   <Text style={styles.addButtonText}>Add Item</Text>
@@ -252,6 +264,12 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: SIZES.padding * 1.5,
     paddingVertical: SIZES.padding * 1.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.secondary,
   },
   card: {
     backgroundColor: COLORS.white,
@@ -304,9 +322,6 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: SIZES.margin * 0.5,
     textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   chartSubtitle: {
     fontSize: SIZES.body,
@@ -325,7 +340,7 @@ const styles = StyleSheet.create({
   pickerWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#00695C',
+    backgroundColor: COLORS.primary,
     borderRadius: SIZES.borderRadius * 1.5,
     paddingHorizontal: SIZES.padding * 0.6,
     paddingVertical: SIZES.padding * 0.3,
@@ -341,6 +356,7 @@ const styles = StyleSheet.create({
   pickerItem: {
     fontSize: SIZES.body - 2,
     fontFamily: FONTS.regular,
+    color: COLORS.text,
   },
   chart: {
     marginVertical: SIZES.padding * 1.5,
@@ -365,6 +381,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
     color: COLORS.text,
     opacity: 0.6,
+    marginBottom: SIZES.margin,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: COLORS.error || 'red',
+    fontSize: SIZES.body,
     marginBottom: SIZES.margin,
     textAlign: 'center',
   },
